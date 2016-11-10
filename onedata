@@ -1,0 +1,47 @@
+#!/usr/bin/env zsh
+
+#@completion
+_onedata-acm() {
+	p=/Users/orzech/repos/onedata/onedata-utils/
+	a=$(sed -n "/^#@completion/,/()/p" $p/onedata | while read -r meta ; read -r fname ; do  fname=${fname%\(*} ; fname=${fname#_onedata-} ; printf \'$fname:$fname\'\ ; done )
+	sed -i -e "s/options=(.*/options=($a)/" $p/_onedata
+	unfunction _onedata
+	autoload -Uz _onedata
+	compinit
+}
+
+_onedata-changelog() {
+  version="$1"
+  organization="onedata"
+  curl https://api.github.com/orgs/$organization/repos 2> /dev/null | jq -r '.[] | .name+" "+.branches_url' | cut -d '{' -f 1 | while read -r repo_name url ; do [[ $(curl "$url"/"$version" 2>/dev/null | jq '.name') != null  ]] && echo "$repo_name"  && curl https://raw.githubusercontent.com/"$organization"/"$repo_name"/"$version"/CHANGELOG.md 2>/dev/null | sed -n "/${version#*/}/,/###/p" | head -n -2 ; done
+}
+
+_onedata-setup-vm() {
+  vms="${(j:,:)@}," # a b c -> a,b,c,
+  ansible-galaxy install abaez.docker
+  ansible-playbook -i $vms -s ansible/docker.yaml
+  ansible all -i $vms -m shell -s -a 'apt-get install -y tmux git'
+  ansible all -i $vms -m shell -s -a ' curl -L "https://github.com/docker/compose/releases/download/1.8.1/docker-compose-$(uname -s)-$(uname -m)" > /usr/local/bin/docker-compose'
+  ansible all -i $vms -m shell -s -a ' chmod +x /usr/local/bin/docker-compose'
+  ansible all -i $vms -m shell -a 'git clone https://github.com/onedata/getting-started.git'
+}
+
+_onedata-start-zone() {
+  vms="${(j:,:)@}," # a b c -> a,b,c,
+  ansible all -i $vms -m shell -a 'tmux new-session -d -s onezone "cd ~/getting-started/scenarios/3_0_oneprovider_onezone_multihost && git reset --hard && git pull && ./run_onedata.sh --zone --with-clean | sleep infinity"'
+}
+
+_onedata-start-prov() {
+  zone_ip=$(cat ~/.ssh/config | gawk "BEGIN {IGNORECASE = 1} /host $1/,/Hostname/" | grep -i Hostname | tr -s ' ' | cut -d ' ' -f 3-)
+  vms="${(j:,:)@[2,#@]}," # a b c -> b,c,
+  ansible all -i $vms -m shell -a "tmux new-session -d -s oneprovider \"cd ~/getting-started/scenarios/3_0_oneprovider_onezone_multihost && git reset --hard && git pull && ./run_onedata.sh --provider --provider-fqdn \$(wget http://ipinfo.io/ip -qO -) --zone-fqdn $zone_ip --set-lat-long --with-clean\""
+}
+
+onedata() {
+ eval "_onedata-$@"
+}
+
+# Finally run the redefined function with the same arguments as the current
+# run. If this is left out, the functionality implemented by the newly
+# defined "hello" function is not executed upon its first call. So:
+onedata "$@"

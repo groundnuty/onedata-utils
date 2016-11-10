@@ -1,0 +1,8 @@
+#compdef onedata
+
+
+_onedata() {
+  local -a options 
+	options=('acm:acm' 'changelog:changelog' '4:4' 'hello_helper_two:hello_helper_two' )
+  _describe 'values' options
+}
